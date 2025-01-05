@@ -1,0 +1,182 @@
+# who is working on terraform "AWS"
+
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+# Configure the AWS Provider
+provider "aws" {
+  region = "us-east-1"
+}
+
+# Create a VPC
+resource "aws_vpc" "myvpc" { # "myvpc" give your vpc name insteed "this is for your reference"
+  cidr_block = "10.0.0.0/16"
+}
+
+tags = {
+    Name = "my-vpc" # for create a new tag
+  }
+}
+
+# Create a subnets
+
+# Create a public subnet
+resource "aws_subnet" "pubsubnet" { # "pubsubnet" change your subnet name insteed
+  vpc_id     = aws_vpc.myvpc.id # "myvpc" change your vpc name insteed (subnet inside which vpc)
+  cidr_block = "10.0.1.0/24"
+  availability_zone = "ap-south-1a" # select a required zone for "public subnet"
+
+  tags = {
+    Name = "my-pub-sub"
+  }
+}
+
+# Create a private subnet
+resource "aws_subnet" "pvtsubnet" { # "pvtsubnet" change your subnet name insteed
+  vpc_id     = aws_vpc.myvpc.id # "myvpc" change your vpc name insteed (subnet inside which vpc)
+  cidr_block = "10.0.2.0/24"
+  availability_zone = "ap-south-1b" # select a required zone for "private subnet"
+
+  tags = {
+    Name = "my-pvt-sub"
+  }
+}
+
+# create a internet gateway
+resource "aws_internet_gateway" "terraformgw" { # "terraformgw" change your internetgateway name insteed
+  vpc_id = aws_vpc.myvpc.id # "myvpc" change your vpc name insteed (internetgateway inside which vpc)
+
+  tags = {
+    Name = "my-igw"
+  }
+}
+
+# create a public route table
+resource "aws_route_table" "pubroute" { # "pubroute" change your public route table name insteed
+  vpc_id = aws_vpc.myvpc.id # "myvpc" change your vpc name insteed (public route table inside which vpc)
+
+  route {
+    cidr_block = "0.0.0.0/0" # inbount rule from anyware
+    gateway_id = aws_internet_gateway.terraformgw.id # "terraformgw" change your internet gateway name insteed
+  }
+
+  tags = {
+    Name = "pubroute"
+  }
+}
+
+# create a route table assosiation to public subnet
+resource "aws_route_table_association" "pubrouteassosi" { # "pubrouteassosi" change your route table assosiation name insteed
+  subnet_id      = aws_subnet.pubsubnet.id # "pubsubnet" change your public subnet name insteed
+  route_table_id = aws_route_table.pubroute.id # "pubroute" change your public route table name insteed
+}
+
+# create a elastic IP for NAT gateway
+
+resource "aws_eip" "myelasticipNAT" { # "myelasticipNAT" change your elastic IP name insteed
+  domain   = "vpc"
+}
+
+#create NAT gateway (before create private route table) to provide access for private subnet
+resource "aws_nat_gateway" "myNAT" { # "myNAT" change your NAT gateway name insteed
+  allocation_id = aws_eip.myelasticipNAT.id # "myelasticipNAT" change your NAT gateway name insteed
+  subnet_id     = aws_subnet.pubsubnet.id # "pubsubnet" change your public subnet name insteed (beacuse we will give internet trough public subnet)
+
+  tags = {
+    Name = "my-NAT"
+  }
+
+# create a private route table
+resource "aws_route_table" "pvtroute" { # "pvtroute" change your private route table name insteed
+  vpc_id = aws_vpc.myvpc.id # "myvpc" change your vpc name insteed (public route table inside which vpc)
+
+  route {
+    cidr_block = "0.0.0.0/0" # inbount rule from anyware
+    gateway_id = aws_nat_gateway.myNAT.id # "aws_nat_gateway.myNAT.id" change gateway to NAT gateway your NAT gateway name
+  }
+
+  tags = {
+    Name = "pvtroute"
+  }
+}
+
+# create a route table assosiation to private subnet
+resource "aws_route_table_association" "pvtrouteassosi" { # "pvtrouteassosi" change your route table assosiation name insteed
+  subnet_id      = aws_subnet.pvtsubnet.id # "pvtsubnet" change your private subnet name insteed
+  route_table_id = aws_route_table.pvtroute.id # "pvtroute" change your private route table name insteed
+}
+
+# create a public security group
+resource "aws_security_group" "allow_pub" { # "pub" change your name insteed
+  name        = "allow_pub" # "pub" change your name insteed
+  description = "Allow TLS inbound traffic and all outbound traffic"
+  vpc_id      = aws_vpc.myvpc.id # "myvpc" change your vpc name insteed
+
+  tags = {
+    Name = "MYPUB-SG"
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_pub_ipv4" { # "pub" change your name insteed
+  security_group_id = aws_security_group.allow_pub.id # "pub" change your name insteed
+  cidr_ipv4         = ["0.0.0.0/0"] # inbound rule (we will give multiple rule inside squre bracket)
+  from_port         = 22 # port for SSH
+  ip_protocol       = "tcp"
+  to_port           = 22 # port for SSH
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_pub_ipv4" { # "pub" change your name insteed
+  security_group_id = aws_security_group.allow_pub.id # "pub" change your name insteed
+  cidr_ipv4         = ["0.0.0.0/0"] # inbound rule (we will give multiple rule inside squre bracket)
+  from_port         = 80 # port for HTTP
+  ip_protocol       = "tcp"
+  to_port           = 80 # port for HTTP
+}
+
+
+resource "aws_vpc_security_group_egress_rule" "allow_pub_traffic_ipv4" {
+  security_group_id = aws_security_group.allow_tls.id
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1" # semantically equivalent to all ports
+}
+
+# create a private security group
+resource "aws_security_group" "allow_pvt" { # "pvt" change your name insteed
+  name        = "allow_pvt" # "pvt" change your name insteed
+  description = "Allow TLS inbound traffic and all outbound traffic"
+  vpc_id      = aws_vpc.myvpc.id # "myvpc" change your vpc name insteed
+
+  tags = {
+    Name = "MYPVT-SG"
+  }
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_pvt_ipv4" { # "pvt" change your name insteed
+  security_group_id = aws_security_group.allow_pvt.id # "pvt" change your name insteed
+  cidr_ipv4         = ["10.0.1.0/24"] # inbound rule (we will give multiple rule inside squre bracket)
+  from_port         = 22 # port for SSH
+  ip_protocol       = "tcp"
+  to_port           = 22 # port for SSH
+}
+
+resource "aws_vpc_security_group_ingress_rule" "allow_pvt_ipv4" { # "pvt" change your name insteed
+  security_group_id = aws_security_group.allow_pvt.id # "pvt" change your name insteed
+  cidr_ipv4         = ["10.0.1.0/24"] # inbound rule (we will give multiple rule inside squre bracket)
+  from_port         = 80 # port for HTTP
+  ip_protocol       = "tcp"
+  to_port           = 80 # port for HTTP
+}
+
+
+resource "aws_vpc_security_group_egress_rule" "allow_all_traffic_ipv4" { # "pvt" change your name insteed
+  security_group_id = aws_security_group.allow_pvt.id # "pvt" change your name insteed
+  cidr_ipv4         = "0.0.0.0/0"
+  ip_protocol       = "-1" # semantically equivalent to all ports
+}
+ 

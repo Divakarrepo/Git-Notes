@@ -1,0 +1,78 @@
+# default for version of terraform & provider name
+terraform {
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 4.16"
+    }
+  }
+
+  required_version = ">= 1.2.0"
+}
+
+# Providers Configuration
+provider "aws" {
+  region     = "us-west-2"
+  access_key = "AKIAYHJANNQ3EXQXFH4V" # give your access_key insteed
+  secret_key = "XPmytlI6g81HxomI4l1FLL//YtrnLejcSlpn8O/k" # give your secret_key insteed
+}
+
+# Create a Security Group
+resource "aws_security_group" "example" {
+  name = "example-sg"
+
+  ingress {
+    from_port   = 22
+    to_port     = 22
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] # Allow SSH access from anywhere (update for security)
+  }
+
+  ingress {
+    from_port   = 80
+    to_port     = 80
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"] # Allow HTTP access from anywhere
+  }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+}
+
+# create a keypair
+# RSA key of size 4096 bits
+resource "tls_private_key" "rsa" { # "rsa" change your name here
+  algorithm = "RSA"
+  rsa_bits  = 4096
+}
+
+# for create a public key connect with server
+resource "aws_key_pair" "TF_key" { # "TF_key" change your name here 
+  key_name   = "TF_key" # "TF_key" change your public name here
+  public_key = tls_private_key.rsa.public_key_openssh  # "rsa" change your rsa name
+}
+
+# for create a private key in our local machine
+resource "local_file" "TF_key" { # "TF_key" change your name here
+  content  = tls_private_key.rsa.private_key_pem  # "rsa" change your rsa name
+  filename = "TF_key" # "TF_key" change your private name here
+}
+
+# (using this in terminal we give password protection our pem file) (ssh-keygen -p -m PEM -f "C:\Users\pdiva\Documents\CLOUDE\Devops\terraform\TF_key.pem" )
+
+# Launch an EC2 Instance
+# create a EC2 instance
+resource "aws_instance" "server" { # "myvm" give your EC2 instance name insteed "this is for your reference"
+ ami           = "ami-05d38da78ce859165" # us-west-2 instance id for (UBUNTU linux)
+ instance_type = "t2.micro"
+ security_groups = [aws_security_group.example.name]
+ key_name = "TF_key" # "TF_key" change your public name here
+
+ tags = {
+    Name = "my-ec2-machines"    
+  }
+}
